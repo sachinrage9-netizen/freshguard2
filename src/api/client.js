@@ -38,58 +38,18 @@ function withQuery(path, params = {}) {
   return `${path}${qs ? `?${qs}` : ''}`;
 }
 
-export function getSensorReadings({ location, storage_location_id, limit, since } = {}) {
-  return request(withQuery('/api/sensor/readings', { location, storage_location_id, limit, since }));
-}
-
-export function getLatestSensorReading({ location, storage_location_id } = {}) {
-  return request(withQuery('/api/sensor/latest', { location, storage_location_id }));
-}
-
-export function getProductRisk(productCode) {
-  return request(`/api/risk/${encodeURIComponent(productCode)}`);
-}
-
-export function getAllRisk() {
-  return request('/api/risk');
-}
-
-export function getProducts() {
-  return request('/api/products');
-}
-
-export function getProduct(productCode) {
-  return request(`/api/products/${encodeURIComponent(productCode)}`);
-}
-
-export function createProduct(data) {
-  return request('/api/products', { method: 'POST', body: JSON.stringify(data) });
-}
-
-export function getStorage() {
-  return request('/api/storage');
-}
-
-export function getStorageLocations() {
-  return getStorage();
-}
-
-export function getStorageById(id) {
-  return request(`/api/storage/${encodeURIComponent(id)}`);
-}
-
-export function createStorage(data) {
-  return request('/api/storage', { method: 'POST', body: JSON.stringify(data) });
-}
-
-export function updateStorage(id, data) {
-  return request(`/api/storage/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) });
-}
-
-export function deleteStorage(id) {
-  return request(`/api/storage/${encodeURIComponent(id)}`, { method: 'DELETE' });
-}
-
-export function getAlerts() {
-  return request('/api/alerts');
-}
+export function getSensorReadings({ location, storage_location_id, limit, since } = {}) { return request(withQuery('/api/sensor/readings', { location, storage_location_id, limit, since })); }
+export function getLatestSensorReading({ location, storage_location_id } = {}) { return request(withQuery('/api/sensor/latest', { location, storage_location_id })); }
+export function getProductRisk(productCode) { return request(`/api/risk/${encodeURIComponent(productCode)}`); }
+export function getAllRisk() { return request('/api/risk'); }
+export function getProducts() { return request('/api/products'); }
+export function getProduct(productCode) { return request(`/api/products/${encodeURIComponent(productCode)}`); }
+export function createProduct(data) { return request('/api/products', { method: 'POST', body: JSON.stringify(data) }); }
+export function updateProduct(productCode, data) { return request(`/api/products/${encodeURIComponent(productCode)}`, { method: 'PUT', body: JSON.stringify(data) }); }
+export function getStorage() { return request('/api/storage'); }
+export function getStorageLocations() { return getStorage(); }
+export function getStorageById(id) { return request(`/api/storage/${encodeURIComponent(id)}`); }
+export function createStorage(data) { return request('/api/storage', { method: 'POST', body: JSON.stringify(data) }); }
+export function updateStorage(id, data) { return request(`/api/storage/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) }); }
+export function deleteStorage(id) { return request(`/api/storage/${encodeURIComponent(id)}`, { method: 'DELETE' }); }
+export function getAlerts() { return request('/api/alerts'); }
