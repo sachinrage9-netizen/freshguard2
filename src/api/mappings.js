@@ -10,3 +10,18 @@ export function locationId(value) {
   if (value == null || value === '') return null;
   return String(value);
 }
+
+export function resolveBackendLocation(value) {
+  if (value == null || value === '') return null;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+
+  const text = String(value).trim();
+  if (/^\d+$/.test(text)) return Number(text);
+
+  if (typeof value === 'object' && value !== null) {
+    const candidate = value.id ?? value.backendId ?? value.storage_location_id ?? value.storageLocationId;
+    if (candidate != null && /^\d+$/.test(String(candidate))) return Number(candidate);
+  }
+
+  return null;
+}
