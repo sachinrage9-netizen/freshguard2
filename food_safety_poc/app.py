@@ -55,15 +55,13 @@ def handle_options(path):
 init_database()
 
 
-@app.route("/")
-def home():
-    return "Food Monitoring Backend is Running!"
-
-
 def _optional_float(value):
     if value in (None, ""):
         return None
-    return float(value)
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        raise ValueError("Expected a numeric value")
 
 
 def _product_payload(row):
@@ -91,10 +89,7 @@ def _storage_update_fields(data):
     fields = {}
     for key in ("name", "type", "sensor_enabled", "width", "height", "depth"):
         if key in data:
-            if key in ("width", "height", "depth"):
-                fields[key] = _optional_float(data[key])
-            else:
-                fields[key] = data[key]
+            fields[key] = _optional_float(data[key]) if key in ("width", "height", "depth") else data[key]
     return fields
 
 
@@ -116,6 +111,11 @@ def _relative_time(timestamp):
     return f"{hours // 24}d ago"
 
 
+@app.route("/")
+def home():
+    return "Food Monitoring Backend is Running!"
+
+
 @app.route("/api/sensor/reading", methods=["POST"])
 def receive_sensor_reading():
     data = request.get_json(silent=True) or {}
@@ -131,7 +131,7 @@ def receive_sensor_reading():
 
     try:
         storage = add_reading(location, float(temperature), float(humidity), storage_location_id)
-    except ValueError as exc:
+    except (ValueError, TypeError) as exc:
         return jsonify({"error": str(exc)}), 400
 
     return jsonify({
@@ -144,20 +144,27 @@ def receive_sensor_reading():
 
 @app.route("/api/sensor/readings", methods=["GET"])
 def sensor_readings():
-    return jsonify(get_readings(
-        location=request.args.get("location"),
-        storage_location_id=request.args.get("storage_location_id"),
-        limit=request.args.get("limit", type=int),
-        since=request.args.get("since"),
-    ))
+    try:
+        readings = get_readings(
+            location=request.args.get("location"),
+            storage_location_id=request.args.get("storage_location_id"),
+            limit=request.args.get("limit", type=int),
+            since=request.args.get("since"),
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify(readings)
 
 
 @app.route("/api/sensor/latest", methods=["GET"])
 def latest_sensor_reading():
-    reading = get_latest_reading(
-        location=request.args.get("location"),
-        storage_location_id=request.args.get("storage_location_id"),
-    )
+    try:
+        reading = get_latest_reading(
+            location=request.args.get("location"),
+            storage_location_id=request.args.get("storage_location_id"),
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     if reading is None:
         return jsonify({"error": "No sensor readings found"}), 404
     return jsonify(reading)
@@ -206,6 +213,8 @@ def create_product():
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
+    except (TypeError, OverflowError) as exc:
+        return jsonify({"error": f"Invalid product data: {exc}"}), 400
     except Exception as exc:
         if "UNIQUE" in str(exc).upper():
             return jsonify({"error": "Product code already exists"}), 409
@@ -292,7 +301,7 @@ def get_product_risk(product_code):
 def get_alerts():
     alerts = []
     now = datetime.utcnow().isoformat(sep=" ", timespec="seconds")
-    assessments = assess_all_products()
+    assessments = [item for item in assess_all_products() if "error" not in item]
     products = {item["product_code"]: item for item in get_products()}
     storages = {item["id"]: item for item in get_storage_locations()}
 
@@ -356,16 +365,15 @@ def get_alerts():
             current_temp = storage.get("temperature")
             recovered = current_temp is not None and current_temp <= max_safe
             max_temp = assessment.get("max_temperature")
+            if max_temp is not None:
+                message = f"{storage.get('name', 'Storage')} reached {max_temp:.1f}°C for {duration:.0f} minutes in the last 24 hours."
+            else:
+                message = f"Temperature stayed above the safe limit for {duration:.0f} minutes."
             alerts.append({
                 "id": f"excursion-{storage_id}-{product_code}",
                 "severity": "LOW" if recovered else "HIGH",
                 "title": "Temperature returned to range" if recovered else "Storage temperature warning",
-                "message": (
-                    f"{storage.get('name', 'Storage')} reached {max_temp:.1f}°C "
-                    f"for {duration:.0f} minutes in the last 24 hours."
-                    if max_temp is not None else
-                    f"Temperature stayed above the safe limit for {duration:.0f} minutes."
-                ),
+                "message": message,
                 "product_code": product_code,
                 "product_name": name,
                 "storage_location_id": storage_id,
@@ -409,10 +417,7 @@ def get_alerts():
                 "id": f"unsafe-{storage_id}",
                 "severity": "HIGH",
                 "title": f"{storage['name']} is above the safe temperature",
-                "message": (
-                    f"{storage['name']} is currently {storage['temperature']:.1f}°C "
-                    f"(limit {unsafe_limit:.1f}°C)."
-                ),
+                "message": f"{storage['name']} is currently {storage['temperature']:.1f}°C (limit {unsafe_limit:.1f}°C).",
                 "product_code": stored_products[0]["product_code"] if stored_products else None,
                 "product_name": stored_products[0]["name"] if stored_products else None,
                 "storage_location_id": storage_id,
@@ -429,9 +434,4 @@ def get_alerts():
 
 
 if __name__ == "__main__":
-    app.run(
-        host="127.0.0.1",
-        port=5000,
-        debug=False,
-        use_reloader=False,
-    )
+    app.run(host="127.0.0.1", port=5000, debug=False, use_reloader=False)
