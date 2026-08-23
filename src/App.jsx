@@ -73,7 +73,7 @@ export default function App(){
   return <Routes>
     <Route path="/login" element={user?<Navigate to="/"/>:<Login onLogin={login}/>}/>
     <Route path="/signup" element={user?<Navigate to="/"/>:<Signup onLogin={login}/>}/>
-    <Route path="/*" element={<Protected user={user}><Layout user={user} backendConnected={backendConnected}><Routes>
+    <Route path="/*" element={<Protected user={user}><Layout user={user} backendConnected={backendConnected} dashboard={dashboard}><Routes>
       <Route path="/" element={<Dashboard {...props}/>}/><Route path="/inventory" element={<Inventory {...props}/>}/><Route path="/storage" element={<Storage locations={locations} setLocations={setLocations} products={products}/>}/><Route path="/product/:id" element={<ProductDetails {...props}/>}/><Route path="/product/:id/edit" element={<EditProduct {...props}/>}/><Route path="/add" element={<AddProduct {...props}/>}/><Route path="/alerts" element={<Alerts alerts={alerts}/>}/><Route path="/reports" element={<Reports sensor={sensor} locations={locations}/>}/><Route path="/settings" element={<Settings {...props} user={user} setUser={setUser} setLocations={setLocations} setCategories={setCategories} dashboard={dashboard} setDashboard={setDashboard}/>} />
     </Routes></Layout></Protected>}/>
   </Routes>;
