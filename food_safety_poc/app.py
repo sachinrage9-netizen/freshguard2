@@ -1,6 +1,7 @@
+import os
 from datetime import datetime
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from urllib.parse import urlparse
 
 from database import (
@@ -22,6 +23,11 @@ from database import (
 from risk_engine import assess_product, assess_all_products
 
 app = Flask(__name__)
+
+# In the combined Render deployment, Flask serves the already-built Vite app.
+# Locally this points at ../dist as well, so the same backend can serve the
+# production build without changing the API paths used by the frontend.
+FRONTEND_DIST = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "dist"))
 
 ALLOWED_ORIGINS = {
     "http://localhost:5175",
@@ -111,9 +117,8 @@ def _relative_time(timestamp):
     return f"{hours // 24}d ago"
 
 
-@app.route("/")
-def home():
-    return "Food Monitoring Backend is Running!"
+# API routes are defined below. The final two routes serve the React build
+# after all /api/* routes have had a chance to match.
 
 
 @app.route("/api/sensor/reading", methods=["POST"])
@@ -431,6 +436,22 @@ def get_alerts():
     for alert in alerts:
         unique[alert["id"]] = alert
     return jsonify(list(unique.values()))
+
+
+@app.route("/", defaults={"path": ""})
+@app.route("/<path:path>")
+def serve_frontend(path):
+    # Never let the SPA fallback swallow API 404s.
+    if path.startswith("api/"):
+        return jsonify({"error": "API endpoint not found"}), 404
+
+    if os.path.isdir(FRONTEND_DIST):
+        requested = os.path.join(FRONTEND_DIST, path) if path else os.path.join(FRONTEND_DIST, "index.html")
+        if path and os.path.isfile(requested):
+            return send_from_directory(FRONTEND_DIST, path)
+        return send_from_directory(FRONTEND_DIST, "index.html")
+
+    return "Food Monitoring Backend is Running!"
 
 
 if __name__ == "__main__":
