@@ -12,6 +12,8 @@ const unitValue={Dairy:80,Drinks:50,Frozen:150,Snacks:45,Bakery:60,Other:70};
 export default function Reports({locations=[],products=[],sensor={}}){
   const [readings,setReadings]=useState([]);
   const [outages,setOutages]=useState(()=>Number(localStorage.getItem('freshguard-power-outages')||0));
+  const [storedProducts,setStoredProducts]=useState(()=>JSON.parse(localStorage.getItem('freshguard-products')||'[]'));
+  const effectiveProducts=products.length?products:storedProducts;
 
   useEffect(()=>{
     let cancelled=false;
@@ -19,10 +21,11 @@ export default function Reports({locations=[],products=[],sensor={}}){
     Promise.all(locations.filter(x=>x.id!=null).map(x=>getSensorReadings({storage_location_id:x.id,since,limit:100}).catch(()=>[])))
       .then(results=>{if(cancelled)return;setReadings(results.flat().sort((a,b)=>String(a.timestamp).localeCompare(String(b.timestamp))));})
       .catch(()=>{});
-    const sync=()=>setOutages(Number(localStorage.getItem('freshguard-power-outages')||0));
+    const sync=()=>{setOutages(Number(localStorage.getItem('freshguard-power-outages')||0));setStoredProducts(JSON.parse(localStorage.getItem('freshguard-products')||'[]'));};
     window.addEventListener('storage',sync);
+    window.addEventListener('freshguard-power-outage',sync);
     const timer=setInterval(sync,1500);
-    return()=>{cancelled=true;window.removeEventListener('storage',sync);clearInterval(timer)};
+    return()=>{cancelled=true;window.removeEventListener('storage',sync);window.removeEventListener('freshguard-power-outage',sync);clearInterval(timer)};
   },[locations]);
 
   const chartData=useMemo(()=>readings.slice(-12).map((r,i)=>({
@@ -33,16 +36,16 @@ export default function Reports({locations=[],products=[],sensor={}}){
 
   const currentTemperature=sensor.temperature!=null?Number(sensor.temperature):(chartData.at(-1)?.temperature??null);
   const currentHumidity=sensor.humidity!=null?Number(sensor.humidity):(chartData.at(-1)?.humidity??null);
-  const totalUnits=products.reduce((sum,p)=>sum+(Number(p.quantity)||0),0);
-  const nearExpiryUnits=products.reduce((sum,p)=>sum+(daysUntil(p.expiry)<=7?Number(p.quantity)||0:0),0);
-  const riskUnits=products.reduce((sum,p)=>sum+(p.priority&&p.priority!=='Normal'?Number(p.quantity)||0:0),0);
+  const totalUnits=effectiveProducts.reduce((sum,p)=>sum+(Number(p.quantity)||0),0);
+  const nearExpiryUnits=effectiveProducts.reduce((sum,p)=>sum+(daysUntil(p.expiry)<=7?Number(p.quantity)||0:0),0);
+  const riskUnits=effectiveProducts.reduce((sum,p)=>sum+(p.priority&&p.priority!=='Normal'?Number(p.quantity)||0:0),0);
   const protectedUnits=Math.max(0,Math.round(totalUnits*0.68-riskUnits*0.08));
   const wastePrevented=Math.max(0,Math.round(totalUnits*0.18+nearExpiryUnits*0.25));
-  const estimatedLoss=Math.max(0,Math.round(products.reduce((sum,p)=>sum+(Number(p.quantity)||0)*(unitValue[p.category]||70),0)*0.16));
+  const estimatedLoss=Math.max(0,Math.round(effectiveProducts.reduce((sum,p)=>sum+(Number(p.quantity)||0)*(unitValue[p.category]||70),0)*0.16));
   const temperatureExcursion=readings.some(r=>Number(r.temperature)>8 || Number(r.temperature)<-10);
   const simulatedOutages=Math.max(outages,temperatureExcursion?1:0);
   const storageHealth=currentTemperature==null?'Waiting':((currentTemperature>=2&&currentTemperature<=5)?'Good':'Attention');
-  const saved=products.slice(0,6).map(p=>({name:String(p.name||'Product').slice(0,12),value:Math.max(0,Math.round((Number(p.quantity)||0)*0.68))})).filter(x=>x.value>0);
+  const saved=effectiveProducts.slice(0,6).map(p=>({name:String(p.name||'Product').slice(0,12),value:Math.max(0,Math.round((Number(p.quantity)||0)*0.68))})).filter(x=>x.value>0);
 
   return <div className="page reports">
     <div className="metric-grid">
