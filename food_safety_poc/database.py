@@ -42,10 +42,11 @@ def _add_column_if_missing(conn, table, column, definition):
 
 
 def _infer_legacy_type(name):
+    # Legacy migration only: new storage writes always require an explicit type.
     if name == "Refrigerator-01":
         return "Refrigerator"
     lowered = (name or "").strip().lower()
-    if lowered in {"freezer"}:
+    if lowered == "freezer":
         return "Freezer"
     if lowered in {"shelf", "shelf 1", "shelf-1"}:
         return "Shelf"
@@ -119,6 +120,7 @@ def _migrate_storage_locations(conn):
     ):
         names.add(name.strip())
 
+    # Only seed the demo refrigerator when the legacy tables contain no storage data.
     if not names:
         names.add("Refrigerator-01")
 
@@ -128,19 +130,6 @@ def _migrate_storage_locations(conn):
     }
 
     created_at = datetime.utcnow().isoformat(sep=" ", timespec="seconds")
-
-    if "Refrigerator-01" not in existing:
-        conn.execute(
-            """
-            INSERT INTO storage_locations (name, type, sensor_enabled, created_at)
-            VALUES (?, ?, 1, ?)
-            """,
-            ("Refrigerator-01", "Refrigerator", created_at),
-        )
-        existing["Refrigerator-01"] = conn.execute(
-            "SELECT id FROM storage_locations WHERE name = ?",
-            ("Refrigerator-01",),
-        ).fetchone()["id"]
 
     for name in names:
         if name in existing:
@@ -157,6 +146,7 @@ def _migrate_storage_locations(conn):
             (name,),
         ).fetchone()["id"]
 
+    # Backfill the canonical ID by exact legacy-name match only.
     for name, storage_id in existing.items():
         conn.execute(
             """
@@ -337,8 +327,13 @@ def get_readings(location=None, storage_location_id=None, limit=None, since=None
     """
     params = []
     if storage_location_id not in (None, ""):
+        try:
+            storage_id = int(storage_location_id)
+        except (TypeError, ValueError):
+            conn.close()
+            raise ValueError("Invalid storage location id")
         query += " AND storage_location_id = ?"
-        params.append(int(storage_location_id))
+        params.append(storage_id)
     elif location:
         query += " AND location = ?"
         params.append(location)
@@ -357,7 +352,7 @@ def get_readings(location=None, storage_location_id=None, limit=None, since=None
 def get_readings_for_storage(storage_location_id, since=None):
     conn = get_connection()
     query = """
-        SELECT timestamp, temperature, humidity, storage_location_id, location
+        SELECT id, timestamp, temperature, humidity, storage_location_id, location
         FROM sensor_readings
         WHERE storage_location_id = ?
     """
@@ -380,8 +375,13 @@ def get_latest_reading(location=None, storage_location_id=None):
     """
     params = []
     if storage_location_id not in (None, ""):
+        try:
+            storage_id = int(storage_location_id)
+        except (TypeError, ValueError):
+            conn.close()
+            raise ValueError("Invalid storage location id")
         query += " AND storage_location_id = ?"
-        params.append(int(storage_location_id))
+        params.append(storage_id)
     elif location:
         query += " AND location = ?"
         params.append(location)
