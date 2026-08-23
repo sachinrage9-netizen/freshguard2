@@ -33,6 +33,22 @@ export default function Storage3D({storage,product,products=[]}){
   const target=isFreezer?'−18°C target':isFridge?'2–5°C target':isShelf?'Organized shelf storage':'Ambient storage';
   const triggerDemo=()=>{if(isShelf)return;setPulse(true);setDoorOpen(true);setTimeout(()=>setPulse(false),1800)};
 
+  const productHref=item=>`/product/${encodeURIComponent(item?.id||item?.productCode||'')}`;
+
+  const productCard=({item,x:rawX,y:rawY,z:rawZ},index)=>{
+    const x=clamp(rawX/width*100,9,91);
+    const y=clamp(100-rawY/height*100,10,90);
+    const z=clamp(rawZ/depth*100,0,100);
+    return <Link
+      key={item?.id||item?.productCode||index}
+      to={productHref(item)}
+      onClick={e=>e.stopPropagation()}
+      title={`Open ${item?.name||'product'} details`}
+      style={{position:'absolute',left:`${x}%`,top:`${y}%`,width:78,height:52,borderRadius:7,background:'linear-gradient(145deg,#fff0b8,#f3c96f)',border:'2px solid #fff',boxShadow:'0 4px 10px rgba(23,61,48,.28)',transform:`translate(-50%,-50%) translateZ(${18+z*.35}px)`,zIndex:10,display:'grid',placeItems:'center',fontSize:10,fontWeight:800,color:'#684b19',overflow:'hidden',textDecoration:'none',textAlign:'center',padding:3,pointerEvents:'auto'}}>
+      <span>{String(item?.name||'ITEM').slice(0,20)}</span>
+    </Link>;
+  };
+
   return <section style={{background:'#fff',border:'1px solid #e1e9e4',padding:24,borderRadius:15}}>
     <p className="eyebrow">3D STORAGE MAP</p>
     <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:12,flexWrap:'wrap'}}>
@@ -47,17 +63,17 @@ export default function Storage3D({storage,product,products=[]}){
             {[0,1,2,3].map(level=><div key={level} style={{position:'absolute',left:12,right:12,top:`${12+level*25}%`,height:9,background:'linear-gradient(180deg,#c79e6d,#a77b4e)',border:'1px solid rgba(80,55,30,.25)',borderRadius:2,boxShadow:'0 3px 0 rgba(255,255,255,.25)'}}/>)}
             <div style={{position:'absolute',left:0,top:0,bottom:0,width:10,background:'#9c7148',transform:'translateZ(12px)'}}/>
             <div style={{position:'absolute',right:0,top:0,bottom:0,width:10,background:'#9c7148',transform:'translateZ(12px)'}}/>
-            {positions.map(({item,x:rawX,y:rawY,z:rawZ},index)=>{const x=clamp(rawX/width*100,9,91);const y=clamp(100-rawY/height*100,10,90);const z=clamp(rawZ/depth*100,0,100);return <Link key={item?.id||item?.productCode||index} to={`/product/${item?.id||item?.productCode||''}`} onClick={e=>e.stopPropagation()} title={`Open ${item?.name||'product'} details`} style={{position:'absolute',left:`${x}%`,top:`${y}%`,width:68,height:46,borderRadius:6,background:'linear-gradient(145deg,#fff0b8,#f3c96f)',border:'2px solid #fff',boxShadow:'0 4px 10px rgba(23,61,48,.28)',transform:`translate(-50%,-50%) translateZ(${18+z*.35}px)`,zIndex:5,display:'grid',placeItems:'center',fontSize:10,fontWeight:800,color:'#684b19',overflow:'hidden',textDecoration:'none',textAlign:'center',padding:3}}>{String(item?.name||'ITEM').slice(0,16)}</Link>})}
+            {positions.map(productCard)}
           </div>
         </> : <>
           <div style={{position:'absolute',inset:0,borderRadius:14,background:isFreezer?'linear-gradient(145deg,#dbe9f3,#9fb9cb)':'linear-gradient(145deg,#edf7f1,#a7c8b6)',boxShadow:'20px 24px 0 rgba(37,65,52,.14)',border:'2px solid rgba(40,70,55,.25)',transformStyle:'preserve-3d'}}>
             <div style={{position:'absolute',left:18,right:18,top:18,bottom:18,borderRadius:10,border:'1px solid rgba(40,70,55,.25)',background:'rgba(255,255,255,.25)',overflow:'hidden'}}>
               {[0,1,2].map(level=><div key={level} style={{position:'absolute',left:8,right:8,top:`${18+level*29}%`,height:4,background:'rgba(60,85,70,.38)',boxShadow:'0 2px 0 rgba(255,255,255,.5)'}}/>)}
-              {positions.map(({item,x:rawX,y:rawY,z:rawZ},index)=>{const x=clamp(rawX/width*100,7,93);const y=clamp(100-rawY/height*100,9,91);const z=clamp(rawZ/depth*100,0,100);return <Link key={item?.id||item?.productCode||index} to={`/product/${item?.id||item?.productCode||''}`} onClick={e=>e.stopPropagation()} title={`Open ${item?.name||'product'} details`} style={{position:'absolute',left:`${x}%`,top:`${y}%`,width:68,height:46,borderRadius:6,background:'linear-gradient(145deg,#fff0b8,#f3c96f)',border:'2px solid #fff',boxShadow:'0 4px 10px rgba(23,61,48,.28)',transform:`translate(-50%,-50%) translateZ(${18+z*.35}px)`,zIndex:5,display:'grid',placeItems:'center',fontSize:10,fontWeight:800,color:'#684b19',overflow:'hidden',textDecoration:'none',textAlign:'center',padding:3}}>{String(item?.name||'ITEM').slice(0,16)}</Link>})}
+              {positions.map(productCard)}
             </div>
             <div style={{position:'absolute',right:-8,top:78,width:6,height:95,borderRadius:6,background:'#51665b'}}/>
           </div>
-          <div style={{position:'absolute',left:0,top:0,width:'100%',height:'100%',borderRadius:14,background:isFreezer?'#c9ddea':'#dceee4',border:'2px solid rgba(40,70,55,.3)',transformOrigin:'left center',transform:`translateZ(18px) rotateY(${doorOpen?-78:0}deg)`,transition:'transform .8s cubic-bezier(.2,.8,.2,1)',backfaceVisibility:'hidden',boxShadow:doorOpen?'none':'8px 8px 14px rgba(30,50,40,.18)',zIndex:8}}>
+          <div style={{position:'absolute',left:0,top:0,width:'100%',height:'100%',borderRadius:14,background:isFreezer?'#c9ddea':'#dceee4',border:'2px solid rgba(40,70,55,.3)',transformOrigin:'left center',transform:`translateZ(18px) rotateY(${doorOpen?-78:0}deg)`,transition:'transform .8s cubic-bezier(.2,.8,.2,1)',backfaceVisibility:'hidden',boxShadow:doorOpen?'none':'8px 8px 14px rgba(30,50,40,.18)',zIndex:8,pointerEvents:doorOpen?'auto':'none'}}>
             <div style={{position:'absolute',left:14,right:14,top:14,bottom:14,borderRadius:10,border:'2px solid rgba(40,70,55,.18)',background:'rgba(255,255,255,.18)'}}/>
             <div style={{position:'absolute',right:18,top:'45%',width:7,height:58,borderRadius:6,background:'#51665b'}}/>
             <div style={{position:'absolute',left:18,top:18,fontSize:10,fontWeight:800,letterSpacing:1,color:accent}}>{applianceLabel.toUpperCase()}</div>
