@@ -1,0 +1,16 @@
+import {useState} from 'react';
+import {Link,useNavigate,useParams} from 'react-router-dom';
+import {ArrowLeft,Save} from 'lucide-react';
+
+export default function EditProduct({products,locations,categories,saveProductEdit}){
+  const {id}=useParams();
+  const nav=useNavigate();
+  const product=products.find(p=>String(p.id)===String(id)||String(p.productCode)===String(id));
+  const [form,setForm]=useState(product?{name:product.name||'',categoryId:product.categoryId||'',quantity:String(product.quantity??''),expiry:product.expiry||'',locationId:String(product.locationId??product.storageLocationId??''),maxTemperature:String(product.maxTemperature??'')}:{name:'',categoryId:'',quantity:'',expiry:'',locationId:'',maxTemperature:''});
+  const [error,setError]=useState('');
+  const [saved,setSaved]=useState(false);
+  if(!product)return <div className="page"><Link className="back" to="/inventory"><ArrowLeft size={17}/> Back to inventory</Link><h2>Product not found.</h2></div>;
+  const update=e=>setForm(f=>({...f,[e.target.name]:e.target.value}));
+  const submit=e=>{e.preventDefault();setError('');const quantity=Number(form.quantity);if(!form.name.trim()){setError('Enter a product name.');return}if(!Number.isInteger(quantity)||quantity<1){setError('Quantity must be a positive whole number.');return}if(!form.expiry){setError('Select an expiry date.');return}const location=locations.find(x=>String(x.id)===String(form.locationId));if(!location){setError('Select a valid storage location.');return}const category=categories.find(x=>x.id===form.categoryId);saveProductEdit(product.productCode||product.id,{name:form.name.trim(),category:category?.name||product.category,categoryId:category?.id||product.categoryId,quantity,expiry:form.expiry,location:location.name,locationId:location.id,storageLocationId:location.id,maxTemperature:form.maxTemperature===''?product.maxTemperature:Number(form.maxTemperature)});setSaved(true);setTimeout(()=>nav(`/product/${encodeURIComponent(product.productCode||product.id)}`),500)};
+  return <div className="page form-page"><Link className="back" to={`/product/${encodeURIComponent(product.productCode||product.id)}`}><ArrowLeft size={17}/> Back to product</Link><p className="eyebrow">EDIT PRODUCT</p><h2>{product.name}</h2>{saved&&<div className="success">✓ Product updated.</div>}{error&&<div className="success">{error}</div>}<form onSubmit={submit}><label>Product name<input required name="name" value={form.name} onChange={update}/></label><label>Category<select name="categoryId" value={form.categoryId} onChange={update}>{categories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label><label>Quantity<input required min="1" step="1" type="number" name="quantity" value={form.quantity} onChange={update}/></label><label>Expiry date<input required type="date" name="expiry" value={form.expiry} onChange={update}/></label><label>Storage location<select name="locationId" value={form.locationId} onChange={update}>{locations.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label><label>Maximum safe temperature (°C)<input type="number" step="0.1" name="maxTemperature" value={form.maxTemperature} onChange={update}/></label><button className="primary" type="submit"><Save size={17}/> Save changes</button></form></div>;
+}
