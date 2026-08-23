@@ -52,7 +52,7 @@ def calculate_excursion_duration(readings, max_temperature=5.0):
 
 
 def calculate_temperature_risk(readings, max_temperature=5.0):
-    if len(readings) < 2:
+    if not readings:
         return {
             "temperature_risk": 0,
             "average_temperature": None,
@@ -128,7 +128,7 @@ def get_recommendation(risk_level):
 
 
 def get_temperature_history(storage_location_id, hours=24):
-    if not storage_location_id:
+    if storage_location_id in (None, ""):
         return []
     since = (datetime.utcnow() - timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
     return get_readings_for_storage(storage_location_id, since=since)
@@ -138,17 +138,13 @@ def assess_product(product_code):
     product = get_product(product_code)
     if product is None:
         return {"error": "Product not found"}
+    if product["storage_location_id"] is None:
+        return {"error": "Product has no storage location"}
 
     days_remaining, expiry_risk = calculate_expiry_risk(product["expiry_date"])
     readings = get_temperature_history(product["storage_location_id"])
-    temperature_result = calculate_temperature_risk(
-        readings,
-        product["max_temperature"],
-    )
-    overall_risk = calculate_overall_risk(
-        expiry_risk,
-        temperature_result["temperature_risk"],
-    )
+    temperature_result = calculate_temperature_risk(readings, product["max_temperature"])
+    overall_risk = calculate_overall_risk(expiry_risk, temperature_result["temperature_risk"])
     risk_level = get_risk_level(overall_risk)
 
     return {

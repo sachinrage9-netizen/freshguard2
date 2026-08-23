@@ -14,19 +14,11 @@ export function locationId(value) {
 export function resolveBackendLocation(value) {
   if (value == null || value === '') return null;
 
-  // Backend storage locations use integer IDs.
-  // Accept an already-canonical ID directly.
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return value;
-  }
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
 
-  // Accept numeric strings such as "1", "2", etc.
   const text = String(value).trim();
-  if (/^\d+$/.test(text)) {
-    return Number(text);
-  }
+  if (/^\d+$/.test(text)) return Number(text);
 
-  // Older/local UI data may contain a location object.
   if (typeof value === 'object' && value !== null) {
     const candidate =
       value.id ??
@@ -39,6 +31,5 @@ export function resolveBackendLocation(value) {
     }
   }
 
-  // Unknown location names cannot safely be converted to a backend ID.
   return null;
 }
