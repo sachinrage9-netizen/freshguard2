@@ -1,7 +1,7 @@
 import {useEffect,useState} from 'react';
 import {Routes,Route,Navigate} from 'react-router-dom';
 import Layout from './components/Layout';
-import {initialProducts,defaultLocations,defaultCategories} from './data/mockData';
+import {defaultCategories} from './data/mockData';
 import Dashboard from './pages/Dashboard';
 import Inventory from './pages/Inventory';
 import ProductDetails from './pages/ProductDetails';
@@ -22,8 +22,8 @@ function Protected({user,children}){return user?children:<Navigate to="/login" r
 
 export default function App(){
   const [user,setUser]=useState(()=>get('freshguard-session',null));
-  const [products,setProducts]=useState(()=>get('freshguard-products',initialProducts).map(p=>({...p,locationId:p.locationId||p.storageLocationId||null,categoryId:p.categoryId||'cat-'+Math.max(0,['Dairy','Drinks','Frozen','Snacks','Bakery','Other'].indexOf(p.category))})));
-  const [locations,setLocations]=useState(()=>get('freshguard-locations',defaultLocations));
+  const [products,setProducts]=useState(()=>get('freshguard-products',[]).map(p=>({...p,locationId:p.locationId||p.storageLocationId||null,categoryId:p.categoryId||'cat-'+Math.max(0,['Dairy','Drinks','Frozen','Snacks','Bakery','Other'].indexOf(p.category))})));
+  const [locations,setLocations]=useState(()=>get('freshguard-locations',[]));
   const [categories,setCategories]=useState(()=>get('freshguard-categories',defaultCategories).map(c=>({...c,parentId:c.parentId||null,createdAt:c.createdAt||new Date().toISOString()})));
   const [dashboard,setDashboard]=useState(()=>get('freshguard-dashboard',{modules:['storage','attention','warning','inventory'],label:''}));
   const [alerts,setAlerts]=useState(()=>get('freshguard-alerts',[]));
