@@ -1,8 +1,10 @@
+import os
 import random
 import time
 import requests
 
-API_BASE = "http://127.0.0.1:5000"
+API_PORT = os.getenv("PORT", "5000")
+API_BASE = f"http://127.0.0.1:{API_PORT}"
 API_URL = f"{API_BASE}/api/sensor/reading"
 
 LOCATION_NAME = "Refrigerator-01"
@@ -78,7 +80,7 @@ while True:
             f"Storage ID: {storage_location_id or 'name-resolved'}"
         )
     except requests.exceptions.ConnectionError:
-        print("Backend is not running.")
+        print("Backend is not running yet; retrying...")
     except requests.exceptions.RequestException as error:
         print(f"Sensor request failed: {error}")
 
