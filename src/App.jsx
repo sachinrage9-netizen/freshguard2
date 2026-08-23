@@ -1,7 +1,7 @@
 import {useEffect,useState} from 'react';
 import {Routes,Route,Navigate} from 'react-router-dom';
 import Layout from './components/Layout';
-import {initialProducts,alerts,defaultLocations,defaultCategories} from './data/mockData';
+import {initialProducts,defaultLocations,defaultCategories} from './data/mockData';
 import Dashboard from './pages/Dashboard';
 import Inventory from './pages/Inventory';
 import ProductDetails from './pages/ProductDetails';
@@ -10,14 +10,27 @@ import Alerts from './pages/Alerts';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 import {Login,Signup} from './pages/Auth';
-import {getProducts,getStorageLocations,getLatestSensorReading} from './api/client';
-import {backendProductCode,resolveBackendLocation,normalizeLocationId} from './api/mappings';
+import {getProducts,getStorage,getLatestSensorReading,getAllRisk,getAlerts} from './api/client';
 
 const get=(key,fallback)=>JSON.parse(localStorage.getItem(key)||'null')||fallback;
 
-function mapBackendProduct(p){
-  const locationId=normalizeLocationId(p.storage_location);
+function riskPriority(risk, expiry){
+  const level=risk?.risk_level;
+  const days=risk?.days_remaining;
+  if(level==='CRITICAL'||level==='HIGH') return 'High priority';
+  if(level==='MODERATE') return 'Sell soon';
+  if(days!=null&&days<=3) return 'Sell soon';
+  if(expiry){
+    const remaining=Math.ceil((new Date(expiry+'T00:00:00')-new Date())/(1000*60*60*24));
+    if(remaining<=3) return 'Sell soon';
+  }
+  return 'Normal';
+}
+
+function mapBackendProduct(p, locationTemps={}, risks={}){
+  const locationId=p.storage_location_id;
   const categoryId='cat-'+Math.max(0,['Dairy','Drinks','Frozen','Snacks','Bakery','Other'].indexOf(p.category));
+  const risk=risks[p.product_code];
   return {
     id:p.product_code,
     productCode:p.product_code,
@@ -29,23 +42,38 @@ function mapBackendProduct(p){
     expiry:p.expiry_date,
     location:p.storage_location,
     locationId,
-    priority:'Normal',
-    temp:null,
+    storageLocationId:locationId,
+    priority:riskPriority(risk,p.expiry_date),
+    temp:locationTemps[locationId] ?? null,
     history:[],
     maxTemperature:p.max_temperature,
+    position_x:p.position_x,
+    position_y:p.position_y,
+    position_z:p.position_z,
+    shelf:p.shelf,
+    slot:p.slot,
+    row:p.row,
+    column:p.column,
+    overallRisk:risk?.overall_risk,
+    riskLevel:risk?.risk_level,
   };
 }
 
 function mapBackendLocation(x){
   return {
-    id:normalizeLocationId(x.name),
+    id:x.id,
     backendId:x.id,
     name:x.name,
     type:x.type,
-    sensor:x.sensor,
+    sensor:!!x.sensor_enabled,
+    sensorEnabled:!!x.sensor_enabled,
     temperature:x.temperature,
     humidity:x.humidity,
     lastUpdated:x.last_updated,
+    productCount:x.product_count,
+    width:x.width,
+    height:x.height,
+    depth:x.depth,
   };
 }
 
@@ -53,66 +81,80 @@ function Protected({user,children}){return user?children:<Navigate to="/login" r
 
 export default function App(){
   const [user,setUser]=useState(()=>get('freshguard-session',null));
-  const [products,setProducts]=useState(()=>get('freshguard-products',initialProducts).map(p=>({...p,locationId:p.locationId||(p.location==='Freezer'?'freezer':'fridge-1'),categoryId:p.categoryId||'cat-'+Math.max(0,['Dairy','Drinks','Frozen','Snacks','Bakery','Other'].indexOf(p.category))})));
+  const [products,setProducts]=useState(()=>get('freshguard-products',initialProducts).map(p=>({...p,locationId:p.locationId||p.storageLocationId||null,categoryId:p.categoryId||'cat-'+Math.max(0,['Dairy','Drinks','Frozen','Snacks','Bakery','Other'].indexOf(p.category))})));
   const [locations,setLocations]=useState(()=>get('freshguard-locations',defaultLocations));
   const [categories,setCategories]=useState(()=>get('freshguard-categories',defaultCategories).map(c=>({...c,parentId:c.parentId||null,createdAt:c.createdAt||new Date().toISOString()})));
   const [dashboard,setDashboard]=useState(()=>get('freshguard-dashboard',{modules:['storage','attention','warning','inventory'],label:''}));
-  const [sensor,setSensor]=useState({temperature:4.2,humidity:68,powerStatus:'ON',outageDuration:'2h 14m',lastUpdated:'just now'});
+  const [alerts,setAlerts]=useState(()=>get('freshguard-alerts',[]));
+  const [sensor,setSensor]=useState({temperature:null,humidity:null,powerStatus:'ON',outageDuration:null,lastUpdated:null});
   const [backendConnected,setBackendConnected]=useState(false);
 
   useEffect(()=>localStorage.setItem('freshguard-products',JSON.stringify(products)),[products]);
   useEffect(()=>localStorage.setItem('freshguard-locations',JSON.stringify(locations)),[locations]);
   useEffect(()=>localStorage.setItem('freshguard-categories',JSON.stringify(categories)),[categories]);
   useEffect(()=>localStorage.setItem('freshguard-dashboard',JSON.stringify(dashboard)),[dashboard]);
+  useEffect(()=>localStorage.setItem('freshguard-alerts',JSON.stringify(alerts)),[alerts]);
 
-  // Polls products/storage/sensor from the backend. The backend is treated
-  // as the source of truth for anything it knows about:
-  //  - backend locations replace their equivalent mock location (matched via
-  //    resolveBackendLocation) instead of being added alongside it, which is
-  //    what caused the duplicate "Refrigerator 1" / "Refrigerator-01" cards.
-  //    Mock locations with no backend equivalent (Freezer, Shelf 1) are left
-  //    in place so those cards don't disappear.
-  //  - backend products replace their equivalent local product (matched via
-  //    backendProductCode) instead of being added alongside it. Local-only
-  //    demo products (no backend product_code) are left untouched so they
-  //    don't silently vanish.
-  // If any request fails, existing state (mock on first load, or last known
-  // good backend data on a later transient failure) is left as-is.
   useEffect(()=>{
     let cancelled=false;
     async function poll(){
-      try{
-        const [backendProducts,backendLocations,latest]=await Promise.all([
-          getProducts(),
-          getStorageLocations(),
-          getLatestSensorReading('Refrigerator-01'),
-        ]);
-        if(cancelled)return;
+      const [productsResult,storageResult,sensorResult,riskResult,alertsResult]=await Promise.allSettled([
+        getProducts(),
+        getStorage(),
+        getLatestSensorReading(),
+        getAllRisk(),
+        getAlerts(),
+      ]);
+      if(cancelled)return;
 
-        setLocations(prev=>{
-          const mapped=backendLocations.map(mapBackendLocation);
-          const mappedNames=new Set(mapped.map(x=>x.name));
-          const localOnly=prev.filter(x=>!mappedNames.has(resolveBackendLocation(x.name)));
-          return [...mapped,...localOnly];
-        });
+      const backendProducts=productsResult.status==='fulfilled'?productsResult.value:null;
+      const backendLocations=storageResult.status==='fulfilled'?storageResult.value:null;
+      const latest=sensorResult.status==='fulfilled'?sensorResult.value:null;
+      const risks=riskResult.status==='fulfilled'?riskResult.value:null;
+      const backendAlerts=alertsResult.status==='fulfilled'?alertsResult.value:null;
 
-        setProducts(prev=>{
-          const mappedBackend=backendProducts.map(mapBackendProduct);
-          const backendCodes=new Set(mappedBackend.map(p=>p.productCode));
-          const localOnly=prev.filter(p=>{
-            const code=backendProductCode(p);
-            return !(code&&backendCodes.has(code));
-          });
-          return [...mappedBackend,...localOnly];
-        });
+      const anyCore=backendProducts||backendLocations||latest||risks||backendAlerts;
+      if(anyCore) setBackendConnected(true);
+      else if(productsResult.status==='rejected'&&storageResult.status==='rejected') setBackendConnected(false);
 
-        if(latest&&!latest.error){
-          setSensor(s=>({...s,temperature:latest.temperature,humidity:latest.humidity,lastUpdated:latest.timestamp}));
-        }
+      const riskMap={};
+      if(Array.isArray(risks)) risks.forEach(r=>{if(r?.product_code) riskMap[r.product_code]=r});
 
-        setBackendConnected(true);
-      }catch(err){
-        if(!cancelled)setBackendConnected(false);
+      const locationTemps={};
+      if(Array.isArray(backendLocations)){
+        backendLocations.forEach(x=>{locationTemps[x.id]=x.temperature});
+        setLocations(backendLocations.map(mapBackendLocation));
+      }
+
+      if(Array.isArray(backendProducts)){
+        setProducts(backendProducts.map(p=>mapBackendProduct(p,locationTemps,riskMap)));
+      }else if(Object.keys(riskMap).length){
+        setProducts(prev=>prev.map(p=>{
+          const risk=riskMap[p.productCode||p.id];
+          return risk?{...p,priority:riskPriority(risk,p.expiry),overallRisk:risk.overall_risk,riskLevel:risk.risk_level}:p;
+        }));
+      }
+
+      if(latest&&!latest.error){
+        setSensor(s=>({...s,temperature:latest.temperature,humidity:latest.humidity,lastUpdated:latest.timestamp,location:latest.location,storageLocationId:latest.storage_location_id}));
+      }else if(Array.isArray(backendLocations)){
+        const withTemp=backendLocations.find(x=>x.temperature!=null);
+        if(withTemp) setSensor(s=>({...s,temperature:withTemp.temperature,humidity:withTemp.humidity,lastUpdated:withTemp.last_updated}));
+      }
+
+      if(Array.isArray(backendAlerts)){
+        setAlerts(backendAlerts.map(a=>({
+          id:a.id,
+          group:a.group,
+          title:a.title,
+          body:a.message,
+          time:a.time||a.timestamp,
+          product:a.product_code,
+          productCode:a.product_code,
+          severity:a.severity,
+          storageLocationId:a.storage_location_id,
+          status:a.status,
+        })));
       }
     }
     poll();
@@ -121,9 +163,7 @@ export default function App(){
   },[]);
 
   const login=u=>{localStorage.setItem('freshguard-session',JSON.stringify(u));setUser(u)};
-  // sensorStatus is kept alongside backendConnected for Dashboard's existing
-  // "Live Sensor" / "Sensor Unavailable" pill, unchanged since Phase 1.
-  const props={products,setProducts,sensor,sensorStatus:backendConnected?'ready':'error',locations,categories,dashboard,user,backendConnected};
+  const props={products,setProducts,sensor,sensorStatus:backendConnected?'ready':'error',locations,categories,dashboard,user,backendConnected,alerts};
 
   return <Routes>
     <Route path="/login" element={user?<Navigate to="/"/>:<Login onLogin={login}/>}/>
@@ -134,7 +174,7 @@ export default function App(){
       <Route path="/product/:id" element={<ProductDetails {...props}/>}/>
       <Route path="/add" element={<AddProduct {...props}/>}/>
       <Route path="/alerts" element={<Alerts alerts={alerts}/>}/>
-      <Route path="/reports" element={<Reports sensor={sensor}/>}/>
+      <Route path="/reports" element={<Reports sensor={sensor} locations={locations}/>}/>
       <Route path="/settings" element={<Settings {...props} user={user} setUser={setUser} setLocations={setLocations} setCategories={setCategories} dashboard={dashboard} setDashboard={setDashboard}/>}/>
     </Routes></Layout></Protected>}/>
   </Routes>

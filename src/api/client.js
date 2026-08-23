@@ -1,10 +1,3 @@
-// Centralized API layer: React components should call these functions
-// instead of calling fetch() directly. Keeps the backend base URL and
-// error handling in one place.
-//
-// Configurable via VITE_API_URL or VITE_API_BASE_URL (either works, in case
-// a .env file already sets one). Defaults to the Flask dev server started
-// with `python app.py`.
 const BASE_URL =
   import.meta.env.VITE_API_URL ||
   import.meta.env.VITE_API_BASE_URL ||
@@ -18,15 +11,13 @@ async function request(path, options = {}) {
       ...options,
     });
   } catch (err) {
-    // Network-level failure (backend not running, CORS, DNS, etc.)
-    throw new Error('Unable to connect to monitoring backend.');
+    throw new Error('Unable to connect to the monitoring backend.');
   }
 
   let body = null;
   try {
     body = await response.json();
   } catch (err) {
-    // Response wasn't valid JSON.
     if (!response.ok) throw new Error(`Backend error (${response.status}).`);
     throw new Error('Received an unexpected response from the backend.');
   }
@@ -38,33 +29,67 @@ async function request(path, options = {}) {
   return body;
 }
 
-// GET /api/sensor/readings[?location=&limit=] -> array of
-// { id, timestamp, location, temperature, humidity }
-export function getSensorReadings({ location, limit } = {}) {
+function withQuery(path, params = {}) {
   const query = new URLSearchParams();
-  if (location) query.set('location', location);
-  if (limit) query.set('limit', limit);
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') query.set(key, value);
+  });
   const qs = query.toString();
-  return request(`/api/sensor/readings${qs ? `?${qs}` : ''}`);
+  return `${path}${qs ? `?${qs}` : ''}`;
 }
 
-// GET /api/sensor/latest[?location=] -> single { id, timestamp, location, temperature, humidity }
-export function getLatestSensorReading(location) {
-  const qs = location ? `?location=${encodeURIComponent(location)}` : '';
-  return request(`/api/sensor/latest${qs}`);
+export function getSensorReadings({ location, storage_location_id, limit, since } = {}) {
+  return request(withQuery('/api/sensor/readings', { location, storage_location_id, limit, since }));
 }
 
-// GET /api/risk/<product_code> -> risk assessment object (see risk_engine.assess_product)
+export function getLatestSensorReading({ location, storage_location_id } = {}) {
+  return request(withQuery('/api/sensor/latest', { location, storage_location_id }));
+}
+
 export function getProductRisk(productCode) {
   return request(`/api/risk/${encodeURIComponent(productCode)}`);
 }
 
-// GET /api/products -> array of backend product rows
+export function getAllRisk() {
+  return request('/api/risk');
+}
+
 export function getProducts() {
   return request('/api/products');
 }
 
-// GET /api/storage -> array of derived storage locations with latest reading + product count
-export function getStorageLocations() {
+export function getProduct(productCode) {
+  return request(`/api/products/${encodeURIComponent(productCode)}`);
+}
+
+export function createProduct(data) {
+  return request('/api/products', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function getStorage() {
   return request('/api/storage');
+}
+
+export function getStorageLocations() {
+  return getStorage();
+}
+
+export function getStorageById(id) {
+  return request(`/api/storage/${encodeURIComponent(id)}`);
+}
+
+export function createStorage(data) {
+  return request('/api/storage', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function updateStorage(id, data) {
+  return request(`/api/storage/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) });
+}
+
+export function deleteStorage(id) {
+  return request(`/api/storage/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export function getAlerts() {
+  return request('/api/alerts');
 }
